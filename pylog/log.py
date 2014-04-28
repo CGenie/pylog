@@ -169,15 +169,20 @@ class PyLogWithListCommit(PyLog):
 
         self.log_messages = []
 
-        self.lazy = LazyWrapper(self, ['commit'])
+        self.lazy = LazyWrapper(self, ['commit', 'log', 'log_with_commit'])
 
     def log(self, msg):
         self.log_messages.append(msg)
+
 
     def commit(self, severity):
         super(PyLogWithListCommit, self).log(severity, self.log_messages)
 
         self.log_messages = []
+
+    def log_with_commit(self, severity, msg):
+        self.log(msg)
+        self.commit(severity)
 
 
 class PyLogWithDictCommit(PyLog):
@@ -189,7 +194,7 @@ class PyLogWithDictCommit(PyLog):
 
         self.log_messages = {}
 
-        self.lazy = LazyWrapper(self, ['commit'])
+        self.lazy = LazyWrapper(self, ['commit', 'log', 'log_with_commit'])
 
     def log(self, key, msg):
         self.log_messages[key] = msg
@@ -198,3 +203,7 @@ class PyLogWithDictCommit(PyLog):
         super(PyLogWithDictCommit, self).log(severity, self.log_messages)
 
         self.log_messages = {}
+
+    def log_with_commit(self, severity, msg):
+        self.log(msg)
+        self.commit(severity)
