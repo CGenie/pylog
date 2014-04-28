@@ -26,8 +26,6 @@ class PyLog(object):
         self.es_setup()
         self.amqp_setup()
 
-        self.lazy = LazyWrapper(self, methods=['info', 'error', 'log'])
-
     def info(self, msg):
         self.log('INFO', msg)
 
@@ -159,3 +157,44 @@ class PyLog(object):
         es.create_river(
             pyes.RabbitMQRiver(**self.river_data),
             river_name=self.river_name)
+
+
+class PyLogWithListCommit(PyLog):
+    """
+    This class collects log messages and creates a message upon
+     calling commit() or lazy.commit().
+    """
+    def __init__(self, *args, **kwargs):
+        super(PyLogWithListCommit, self).__init__(*args, **kwargs)
+
+        self.log_messages = []
+
+        self.lazy = LazyWrapper(self, ['commit'])
+
+    def log(self, msg):
+        self.log_messages.append(msg)
+
+    def commit(self, severity):
+        super(PyLogWithListCommit, self).log(severity, self.log_messages)
+
+        self.log_messages = []
+
+
+class PyLogWithDictCommit(PyLog):
+    """
+    Same as PyLogWithListCommit but creates a dict.
+    """
+    def __init__(self, *args, **kwargs):
+        super(PyLogWithDictCommit, self).__init__(*args, **kwargs)
+
+        self.log_messages = {}
+
+        self.lazy = LazyWrapper(self, ['commit'])
+
+    def log(self, key, msg):
+        self.log_messages[key] = msg
+
+    def commit(self, severity):
+        super(PyLogWithDictCommit, self).log(severity, self.log_messages)
+
+        self.log_messages = {}
