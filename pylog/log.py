@@ -1,8 +1,13 @@
 import amqp
+import datetime
+from dateutil import tz as dateutil_tz
 import json
 import pyes
 
 from .settings import settings
+
+
+UTC = dateutil_tz.gettz('UTC')
 
 
 class LazyWrapper(object):
@@ -44,6 +49,7 @@ class PyLog(object):
             self.log_name: {
                 'severity': severity,
                 'msg': msg,
+                'timestamp': datetime.datetime.now(tz=UTC).isoformat(),
             },
         })
 
@@ -106,8 +112,11 @@ class PyLog(object):
                 'store': 'yes',
                 'type': 'string',
             },
-            '_timestamp': {
-                'enabled': True,
+            'timestamp': {
+                'index': 'analyzed',
+                'store': 'yes',
+                'type': 'date',
+                'format': 'date_time',
             }
         }
 
