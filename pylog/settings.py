@@ -14,10 +14,11 @@ DEFAULT_AMQP_SETTINGS = {
 DEFAULT_ES_SETTINGS = {
     'host': 'localhost',
     'port': 9200,
-    'index': 'pylogger',
+    'index': 'pylog',
 }
 
 
+# TODO: add some AMQP/ES setters with validation
 class Settings(object):
     def __init__(self, AMQP=DEFAULT_AMQP_SETTINGS, ES=DEFAULT_ES_SETTINGS):
         self.AMQP = AMQP
