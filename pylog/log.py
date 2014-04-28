@@ -47,7 +47,7 @@ class PyLog(object):
 
         msg = json.dumps({
             self.log_name: {
-                'severity': severity,
+                'severity': severity.upper(),
                 'msg': msg,
                 'timestamp': datetime.datetime.now(tz=UTC).isoformat(),
             },
