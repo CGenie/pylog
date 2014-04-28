@@ -5,12 +5,28 @@ import pyes
 from .settings import settings
 
 
+class LazyWrapper(object):
+    def __init__(self, instance, methods=[]):
+        self.__instance = instance
+
+        for method_name in methods:
+            setattr(self, method_name, self.__lazy_call(method_name))
+
+    def __lazy_call(self, method_name):
+        def call(*args, **kwargs):
+            return lambda: getattr(self.__instance, method_name)(*args, **kwargs)
+
+        return call
+
+
 class PyLog(object):
     def __init__(self, log_name):
         self.log_name = log_name
 
         self.es_setup()
         self.amqp_setup()
+
+        self.lazy = LazyWrapper(self, methods=['info', 'error', 'log'])
 
     def info(self, msg):
         self.log('INFO', msg)
@@ -58,6 +74,7 @@ class PyLog(object):
     }
 
     def amqp_setup(self):
+        # TODO: initialize these variables in __init__
         self.amqp_conn = amqp.connection.Connection(**settings.AMQP)
         self.amqp_channel = amqp.Channel(self.amqp_conn)
         self.amqp_exchange = self.amqp_channel.exchange_declare(
