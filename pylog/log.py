@@ -204,6 +204,6 @@ class PyLogWithDictCommit(PyLog):
 
         self.log_messages = {}
 
-    def log_with_commit(self, severity, msg):
-        self.log(msg)
+    def log_with_commit(self, severity, key, msg):
+        self.log(key, msg)
         self.commit(severity)
