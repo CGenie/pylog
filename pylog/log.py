@@ -118,6 +118,10 @@ class PyLog(object):
     @property
     def river_data(self):
         return {
+            'name': self.river_name,
+            'index_name': settings.ES['index'],
+            'index_type': self.log_name,
+
             'host': settings.AMQP['host'],
             'port': settings.AMQP['port'],
 
