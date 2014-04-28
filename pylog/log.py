@@ -12,6 +12,12 @@ class PyLog(object):
         self.es_setup()
         self.amqp_setup()
 
+    def info(self, msg):
+        self.log('INFO', msg)
+
+    def error(self, msg):
+        self.log('ERROR', msg)
+
     def log(self, severity, msg):
         index_data = json.dumps({
             'index': {
