@@ -4,24 +4,74 @@ from dateutil import tz as dateutil_tz
 import json
 import pyes
 
+from .lazy import LazyWrapper
 from .settings import settings
 
 
 UTC = dateutil_tz.gettz('UTC')
 
 
-class LazyWrapper(object):
-    def __init__(self, instance, methods=[]):
-        self.__instance = instance
+# Log querying functionality
+# This is closely bound to the PyLogBase.log method
+class PyLogQuery(object):
+    def __init__(self, index, document_type, es):
+        self.index = index
+        self.document_type = document_type
+        self.es = es
 
-        for method_name in methods:
-            setattr(self, method_name, self.__lazy_call(method_name))
+    def query(self,
+              sort='timestamp',
+              start=0,
+              size=20,
+              severity=None,
+              timestamp_from=None,
+              timestamp_till=None):
+        fltr = []
 
-    def __lazy_call(self, method_name):
-        def call(*args, **kwargs):
-            return lambda: getattr(self.__instance, method_name)(*args, **kwargs)
+        if severity is not None:
+            fltr.append(
+                pyes.TermFilter(field='severity', value=severity)
+            )
 
-        return call
+        if timestamp_from is not None:
+            if isinstance(timestamp_from, datetime.datetime):
+                timestamp_from = timestamp_from.isoformat()
+
+            fltr.append(
+                pyes.RangeFilter(
+                    pyes.ESRangeOp(
+                        'timestamp', 'gte', timestamp_from
+                    )
+                )
+            )
+
+        if timestamp_till is not None:
+            if isinstance(timestamp_till, datetime.datetime):
+                timestamp_till = timestamp_till.isoformat()
+
+            fltr.append(
+                pyes.RangeFilter(
+                    pyes.ESRangeOp(
+                        'timestamp', 'lte', timestamp_till
+                    )
+                )
+            )
+
+        f = None
+        if fltr:
+            f = pyes.ANDFilter(fltr)
+        q = pyes.MatchAllQuery()
+
+        s = pyes.Search(
+            query=q,
+            filter=f,
+            start=start,
+            size=size)
+
+        return self.es.search(
+            s,
+            indices=[self.index],
+            doc_types=[self.document_type])
 
 
 class PyLog(object):
@@ -30,6 +80,11 @@ class PyLog(object):
 
         self.es_setup()
         self.amqp_setup()
+
+        self.query = PyLogQuery(
+            self.es_index,
+            self.es_document_type,
+            self.es)
 
     def info(self, msg):
         self.log('INFO', msg)
@@ -42,7 +97,7 @@ class PyLog(object):
             'index': {
                 '_index': settings.ES['index'],
                 '_type': self.log_name,
-            }
+                }
         })
 
         msg = json.dumps({
@@ -50,22 +105,27 @@ class PyLog(object):
                 'severity': severity.upper(),
                 'msg': msg,
                 'timestamp': datetime.datetime.now(tz=UTC).isoformat(),
-            },
-        })
+                },
+            })
+
+        # TODO: this should be some generic method so that ES/RabbitMQ can
+        #       be replaced later with something else
+        bulk_msg = '\n'.join([index_data, msg, ''])  # trailing newline added
+
+        print bulk_msg
 
         self.amqp_channel.basic_publish(
-            amqp.Message(
-                '\n'.join([index_data, msg, ''])),  # trailing newline added
+            amqp.Message(bulk_msg),
             exchange=self.amqp_exchange_name)
 
     # RabbitMQ-specific code
     @property
     def amqp_exchange_name(self):
-        return 'pylog.%s' % self.log_name
+        return 'pylog.%s' % self.es_document_type
 
     @property
     def amqp_queue_name(self):
-        return 'pylog.%s' % self.log_name
+        return 'pylog.%s' % self.es_document_type
 
     amqp_exchange_properties = {
         'durable': True,
@@ -122,14 +182,14 @@ class PyLog(object):
 
     @property
     def river_name(self):
-        return 'pylog_%s' % self.log_name
+        return 'pylog_%s' % self.es_document_type
 
     @property
     def river_data(self):
         return {
             'name': self.river_name,
-            'index_name': settings.ES['index'],
-            'index_type': self.log_name,
+            'index_name': self.es_index,
+            'index_type': self.es_document_type,
 
             'host': settings.AMQP['host'],
             'port': settings.AMQP['port'],
@@ -154,18 +214,26 @@ class PyLog(object):
     def es(self):
         return pyes.ES('%s:%s' % (settings.ES['host'], settings.ES['port']))
 
+    @property
+    def es_index(self):
+        return settings.ES['index']
+
+    @property
+    def es_document_type(self):
+        return self.log_name
+
     def es_setup(self):
         es = self.es
 
         try:
-            es.indices.create_index(settings.ES['index'])
+            es.indices.create_index(self.es_index)
         except pyes.exceptions.IndexAlreadyExistsException:
             pass
 
         es.indices.put_mapping(
-            self.log_name,
+            self.es_document_type,
             {'properties': self.mapping},
-            settings.ES['index'])
+            self.es_index)
 
         es.create_river(
             pyes.RabbitMQRiver(**self.river_data),
@@ -183,6 +251,12 @@ class PyLogWithListCommit(PyLog):
         self.log_messages = []
 
         self.lazy = LazyWrapper(self, ['commit', 'log', 'log_with_commit'])
+
+    def info(self, msg):
+        raise NotImplementedError
+
+    def error(self, msg):
+        raise NotImplementedError
 
     def log(self, msg):
         self.log_messages.append(msg)
@@ -208,6 +282,12 @@ class PyLogWithDictCommit(PyLog):
         self.log_messages = {}
 
         self.lazy = LazyWrapper(self, ['commit', 'log', 'log_with_commit'])
+
+    def info(self, msg):
+        raise NotImplementedError
+
+    def error(self, msg):
+        raise NotImplementedError
 
     def log(self, key, msg):
         self.log_messages[key] = msg
